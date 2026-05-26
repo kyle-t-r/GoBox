@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GoBox Events</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>GoBox Events Monitor</h1>
+        <div class="info">Showing {{ len .Entries }} events (limit: {{ .Limit }}, offset: {{ .Offset }})</div>
+        
+        <table id="eventsTable">
+            <thead>
+                <tr>
+                    <th>ID ↕</th>
+                    <th>Time ↕</th>
+                    <th>Service ↕</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Entries}}
+                <tr>
+                    <td>{{.Id}}</td>
+                    <td>{{formatTime .Time}}</td>
+                    <td><strong>{{.Service}}</strong></td>
+                    <td>{{.Message}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        
+        <div class="pagination">
+            <a href="/read?offset=0">First</a>
+            {{if gt .Offset 0}}
+            <a href="/read?offset={{.PrevOffset}}">← Previous</a>
+            {{end}}
+            <span>Page {{.Page}}</span>
+            <a href="/read?offset={{.NextOffset}}">Next →</a>
+        </div>
+    </div>
+</body>
+</html>
