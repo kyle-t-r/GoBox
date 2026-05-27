@@ -56,14 +56,6 @@ type PublisherRegistry struct {
 	dbPath     string
 }
 
-type Event struct {
-	Id      int
-	Level   string
-	Time    int
-	Service string
-	Message string
-}
-
 var db *sql.DB
 var yamlConfig *YAMLConfig
 
@@ -220,6 +212,8 @@ func (pr *PublisherRegistry) Stop() {
 	logger.Println("[REGISTRY] Publisher registry stopped")
 }
 
+// Frontend
+
 func startServer() {
 	r := gin.Default()
 	r.Static("/static", "./static")
@@ -227,6 +221,14 @@ func startServer() {
 
 	logger.Printf("[SERVER] Starting on %s\n", yamlConfig.Server.Port)
 	r.Run(yamlConfig.Server.Port)
+}
+
+type Event struct {
+	Id      int
+	Level   string
+	Time    int
+	Service string
+	Message string
 }
 
 type PageData struct {
@@ -246,15 +248,12 @@ func readEvents(c *gin.Context) {
 
 	logger.Printf("[QUERY] Reading events - Limit: %s, Offset: %s, Level: %s\n", limit, offset, level)
 
-	// Build WHERE clause based on level filter
 	var whereClause string
 	switch level {
 	case "crit":
 		whereClause = " WHERE level = 'CRIT'"
 	case "warn":
 		whereClause = " WHERE level IN ('WARN', 'CRIT')"
-	case "info":
-		whereClause = ""
 	default:
 		whereClause = ""
 	}
@@ -290,10 +289,9 @@ func readEvents(c *gin.Context) {
 		PrevOffset: offsetInt - limitInt,
 	}
 
-	// Pass level to template for filter UI
 	data.Level = level
 
-	tmpl := template.New("template.html").Funcs(map[string]interface{}{
+	tmpl := template.New("template.html").Funcs(map[string]any{
 		"formatTime": func(unixTime int) string {
 			return time.Unix(int64(unixTime), 0).Format("2006-01-02 15:04:05")
 		},
