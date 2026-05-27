@@ -193,7 +193,7 @@ func (pr *PublisherRegistry) runPublisher(name string, pubConfig PublisherConfig
 		return
 	}
 
-	cmd := exec.Command(pubConfig.Executable)
+	cmd := exec.Command("bash", "-c", pubConfig.Executable)
 	cmd.Stdin = bytes.NewReader(configJSON)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
