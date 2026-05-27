@@ -1,6 +1,8 @@
 # GoBox
 Event driven server monitoring tool written in Go, including two event publisher utility projects.
 
+Build with `make clean build` using Bash terminal (*NOT* compatible with Windows unless using Git Bash) and run from `gobox` executable.
+
 ### GoBox Utility
 Exposes a single Gin endpoint at `/read` to view events with `limit`, `offset`, and `level` query params.
 
