@@ -1,0 +1,23 @@
+database:
+  type: sqlite3
+  connection: "./sqlite.db"
+
+server:
+  port: ":8080"
+
+publishers:
+  sys-monitor:
+    schedule: "@every 1m"
+    executable: "./publishers/sys-monitor/sys-monitor"
+    config:
+      cpu_warn: 50.0
+      cpu_critical: 90.0
+      mem_warn: 50.0
+      mem_critical: 90.0
+  disk-monitor:
+    schedule: "@every 1m"
+    executable: "./publishers/disk-monitor/disk-monitor"
+    config:
+      disk_label: "C:"
+      disk_warn: 80.0
+      disk_critical: 90.0

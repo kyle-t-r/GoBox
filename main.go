@@ -1,19 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"html/template"
 	"log"
 	"os"
+	"os/exec"
 	"strconv"
 	"time"
 
-	"github.com/kyle-t-r/gobox/listeners"
-
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/robfig/cron/v3"
+	"gopkg.in/yaml.v3"
 )
 
 /**
@@ -27,83 +29,87 @@ var (
 	logger = log.New(os.Stdout, "[GoBox] ", log.LstdFlags)
 )
 
-type Config struct {
-	DBConnectionString string
-	DBType             string
-	CPUThresholdWarn   float64
-	CPUThresholdCrit   float64
-	MemThresholdWarn   float64
-	MemThresholdCrit   float64
-	DiskThresholdWarn  float64
-	DiskThresholdCrit  float64
-	Port               string
+type YAMLConfig struct {
+	Database   DatabaseConfig             `yaml:"database"`
+	Server     ServerConfig               `yaml:"server"`
+	Publishers map[string]PublisherConfig `yaml:"publishers"`
+}
+
+type DatabaseConfig struct {
+	Type       string `yaml:"type"`
+	Connection string `yaml:"connection"`
+}
+
+type ServerConfig struct {
+	Port string `yaml:"port"`
+}
+
+type PublisherConfig struct {
+	Schedule   string                 `yaml:"schedule"`
+	Executable string                 `yaml:"executable"`
+	Config     map[string]interface{} `yaml:"config"`
+}
+
+type PublisherRegistry struct {
+	cron       *cron.Cron
+	publishers map[string]PublisherConfig
+	dbPath     string
 }
 
 type Event struct {
 	Id      int
+	Level   string
 	Time    int
 	Service string
 	Message string
 }
 
-var config *Config
 var db *sql.DB
+var yamlConfig *YAMLConfig
 
 func main() {
 	logger.Println("========== Starting GoBox ==========")
+	loadYAMLConfig()
+	initDatabase()
+	defer db.Close()
 
-	getConfig()
-	getDB()
+	logger.Println("Starting publisher registry and server...")
+	registry := NewPublisherRegistry(yamlConfig.Publishers, yamlConfig.Database.Connection)
+	registry.Start()
+	defer registry.Stop()
 
-	logger.Println("Starting server and listener...")
+	// Gin server frontend runs separately
 	go startServer()
-	go startListener()
 
 	// Block thread to keep main alive
 	select {}
 }
 
-func getConfig() {
-	logger.Println("[CONFIG] Loading environment...")
-	err := godotenv.Load()
+func loadYAMLConfig() {
+	logger.Println("[CONFIG] Loading config.yaml...")
+
+	data, err := os.ReadFile("config.yaml")
 	if err != nil {
-		logger.Println("[CONFIG] Warning: .env file not found, using system environment")
+		logger.Fatalf("[CONFIG] ERROR: Failed to read config.yaml: %v\n", err)
 	}
 
-	config = &Config{
-		DBConnectionString: os.Getenv("DB_CONNECTION_STRING"),
-		DBType:             os.Getenv("DB_TYPE"),
-		CPUThresholdWarn:   parseEnvFloat("CPU_THRESHOLD_WARNING", 50.0),
-		CPUThresholdCrit:   parseEnvFloat("CPU_THRESHOLD_CRITICAL", 90.0),
-		MemThresholdWarn:   parseEnvFloat("MEM_THRESHOLD_WARNING", 50.0),
-		MemThresholdCrit:   parseEnvFloat("MEM_THRESHOLD_CRITICAL", 90.0),
-		DiskThresholdWarn:  parseEnvFloat("DISK_THRESHOLD_WARNING", 50.0),
-		DiskThresholdCrit:  parseEnvFloat("DISK_THRESHOLD_CRITICAL", 90.0),
-		Port:               ":" + os.Getenv("PORT"),
+	yamlConfig = &YAMLConfig{}
+	if err := yaml.Unmarshal(data, yamlConfig); err != nil {
+		logger.Fatalf("[CONFIG] ERROR: Failed to parse config.yaml: %v\n", err)
 	}
 
-	logger.Printf("[CONFIG] Database Type: %s\n", config.DBType)
-	logger.Printf("[CONFIG] Port: %s\n", config.Port)
+	logger.Printf("[CONFIG] Database Type: %s\n", yamlConfig.Database.Type)
+	logger.Printf("[CONFIG] Server Port: %s\n", yamlConfig.Server.Port)
+	logger.Printf("[CONFIG] Publishers found: %d\n", len(yamlConfig.Publishers))
+	for name := range yamlConfig.Publishers {
+		logger.Printf("[CONFIG] - Publisher: %s\n", name)
+	}
 	logger.Println("[CONFIG] Configuration loaded successfully")
 }
 
-func parseEnvFloat(key string, defaultValue float64) float64 {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
-	}
-
-	parsed, err := strconv.ParseFloat(value, 64)
-	if err != nil {
-		logger.Printf("[CONFIG] Warning: invalid float for %s: %v, using default %.2f\n", key, err, defaultValue)
-		return defaultValue
-	}
-	return parsed
-}
-
-func getDB() {
+func initDatabase() {
 	logger.Println("[DATABASE] Opening connection...")
-	unsafeDB, err := sql.Open(config.DBType, config.DBConnectionString)
+	unsafeDB, err := sql.Open(yamlConfig.Database.Type, yamlConfig.Database.Connection)
 	if err != nil {
 		logger.Fatalf("[DATABASE] ERROR: Failed to open database: %v\n", err)
 	}
@@ -114,18 +120,19 @@ func getDB() {
 
 	db = unsafeDB
 	logger.Println("[DATABASE] Connected successfully")
-	initDB()
+	initDBTables()
 }
 
-func initDB() {
+func initDBTables() {
 	logger.Println("[DATABASE] Initializing tables...")
 	var createTableSQL string
 
-	switch config.DBType {
+	switch yamlConfig.Database.Type {
 	case "sqlite3":
 		createTableSQL = `
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+			level TEXT NOT NULL,
             time INTEGER NOT NULL,
             service TEXT NOT NULL,
             message TEXT NOT NULL
@@ -135,6 +142,7 @@ func initDB() {
 		createTableSQL = `
         CREATE TABLE IF NOT EXISTS events (
             id INT AUTO_INCREMENT PRIMARY KEY,
+			level VARCHAR(10) NOT NULL,
             time BIGINT NOT NULL,
             service VARCHAR(255) NOT NULL,
             message TEXT NOT NULL
@@ -151,50 +159,74 @@ func initDB() {
 	}
 }
 
-func startListener() {
-	logger.Println("[LISTENER] Starting stats listener...")
-	thresholds := listeners.Thresholds{
-		CPUWarnPercent:      config.CPUThresholdWarn,
-		CPUCriticalPercent:  config.CPUThresholdCrit,
-		MemWarnPercent:      config.MemThresholdWarn,
-		MemCriticalPercent:  config.MemThresholdCrit,
-		DiskWarnPercent:     config.DiskThresholdWarn,
-		DiskCriticalPercent: config.DiskThresholdCrit,
+func NewPublisherRegistry(publishers map[string]PublisherConfig, dbPath string) *PublisherRegistry {
+	return &PublisherRegistry{
+		cron:       cron.New(),
+		publishers: publishers,
+		dbPath:     dbPath,
 	}
-	logger.Printf("[LISTENER] Thresholds - CPU Warn: %.1f%%, CPU Critical: %.1f%%, Memory Warn: %.1f%%, Memory Critical: %.1f%%, Disk Warn: %.1f%%, Disk Critical: %.1f%%\n",
-		thresholds.CPUWarnPercent, thresholds.CPUCriticalPercent, thresholds.MemWarnPercent, thresholds.MemCriticalPercent, thresholds.DiskWarnPercent, thresholds.DiskCriticalPercent)
+}
 
-	listener := listeners.NewStatsListener("http://localhost"+config.Port, thresholds)
-	cronJob := listener.Start()
-	defer cronJob.Stop()
+func (pr *PublisherRegistry) Start() {
+	logger.Println("[REGISTRY] Starting publisher registry...")
 
-	select {}
+	for name, pubConfig := range pr.publishers {
+		logger.Printf("[REGISTRY] Registering publisher: %s (schedule: %s)\n", name, pubConfig.Schedule)
+
+		publisherName := name
+		publisherConfig := pubConfig
+
+		_, err := pr.cron.AddFunc(publisherConfig.Schedule, func() {
+			pr.runPublisher(publisherName, publisherConfig)
+		})
+
+		if err != nil {
+			logger.Printf("[REGISTRY] ERROR: Failed to schedule publisher %s: %v\n", publisherName, err)
+			continue
+		}
+
+		logger.Printf("[REGISTRY] Publisher %s scheduled successfully\n", publisherName)
+	}
+
+	pr.cron.Start()
+	logger.Println("[REGISTRY] Publisher registry started")
+}
+
+func (pr *PublisherRegistry) runPublisher(name string, pubConfig PublisherConfig) {
+	logger.Printf("[REGISTRY] Running publisher: %s\n", name)
+
+	configJSON, err := json.Marshal(pubConfig.Config)
+	if err != nil {
+		logger.Printf("[REGISTRY] ERROR: Failed to marshal config for %s: %v\n", name, err)
+		return
+	}
+
+	cmd := exec.Command(pubConfig.Executable)
+	cmd.Stdin = bytes.NewReader(configJSON)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		logger.Printf("[REGISTRY] ERROR: Publisher %s failed: %v\n", name, err)
+		return
+	}
+
+	logger.Printf("[REGISTRY] Publisher %s completed successfully\n", name)
+}
+
+func (pr *PublisherRegistry) Stop() {
+	logger.Println("[REGISTRY] Stopping publisher registry...")
+	pr.cron.Stop()
+	logger.Println("[REGISTRY] Publisher registry stopped")
 }
 
 func startServer() {
 	r := gin.Default()
 	r.Static("/static", "./static")
-	r.GET("/new", createEvent)
 	r.GET("/read", readEvents)
 
-	logger.Printf("[SERVER] Starting on %s\n", config.Port)
-	r.Run(config.Port)
-}
-
-func createEvent(c *gin.Context) {
-	service := c.DefaultQuery("service", "log-service")
-	message := c.DefaultQuery("message", "Message not provided. This is a bug.")
-	eventTime := time.Now().Unix()
-
-	_, err := db.Exec("INSERT INTO events (time, service, message) VALUES (?, ?, ?)", eventTime, service, message)
-	if err != nil {
-		logger.Printf("[EVENT] ERROR: Failed to insert event - Service: %s, Error: %v\n", service, err)
-		c.JSON(500, gin.H{"error": "Failed to create event"})
-		return
-	}
-
-	logger.Printf("[EVENT] Created - Service: %s, Message: %s\n", service, message)
-	c.JSON(200, gin.H{"status": "Event created"})
+	logger.Printf("[SERVER] Starting on %s\n", yamlConfig.Server.Port)
+	r.Run(yamlConfig.Server.Port)
 }
 
 type PageData struct {
@@ -212,7 +244,7 @@ func readEvents(c *gin.Context) {
 
 	logger.Printf("[QUERY] Reading events - Limit: %s, Offset: %s\n", limit, offset)
 
-	query := "SELECT id, time, service, message FROM events ORDER BY time DESC LIMIT ? OFFSET ?"
+	query := "SELECT id, level, time, service, message FROM events ORDER BY time DESC LIMIT ? OFFSET ?"
 	rows, err := db.Query(query, limit, offset)
 	if err != nil {
 		logger.Printf("[QUERY] ERROR: Database query failed: %v\n", err)
@@ -224,7 +256,7 @@ func readEvents(c *gin.Context) {
 	entries := []Event{}
 	for rows.Next() {
 		var e Event
-		if err := rows.Scan(&e.Id, &e.Time, &e.Service, &e.Message); err != nil {
+		if err := rows.Scan(&e.Id, &e.Level, &e.Time, &e.Service, &e.Message); err != nil {
 			logger.Printf("[QUERY] ERROR: Failed to scan row: %v\n", err)
 			continue
 		}
