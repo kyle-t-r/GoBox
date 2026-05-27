@@ -40,8 +40,8 @@ publishers:
 
 Publishers must use the `publib` module to publish events, or modify the database directly. When inserting directly, the publisher has to follow the schema created by the GoBox utility.
 
-[!NOTE]
-Example Query: `INSERT INTO events (level, time, service, message) VALUES (?, ?, ?, ?)`
+> [!NOTE]
+> Example Query: `INSERT INTO events (level, time, service, message) VALUES (?, ?, ?, ?)`
 
 **disk-monitor**
 Reports the disk utilization for the given label or mount path.
