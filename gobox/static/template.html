@@ -3,10 +3,12 @@
 <head>
     <title>GoBox Events</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
 </head>
 <body>
     <div class="container">
         <h1>GoBox Events Monitor</h1>
+        <h3>By <a href="https://github.com/kyle-t-r" target="_blank">kyle-t-r</a></h3>
         <div class="filter-controls">
             <label>Filter by Level:</label>
             <a href="/read?level=info&service={{ .Service }}&offset=0" class="filter-btn {{ if eq .Level "info" }}active{{ end }}">INFO</a>

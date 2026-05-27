@@ -8,4 +8,6 @@ build:
 	cp -r gobox/static/* output/static/; if [ ! -f output/config.yaml ]; then touch output/config.yaml; fi
 
 clean:
-	rm -rf output
+	rm -rf output/publishers
+	rm -rf output/static
+	rm output/gobox
