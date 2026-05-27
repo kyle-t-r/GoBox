@@ -9,19 +9,26 @@
         <h1>GoBox Events Monitor</h1>
         <div class="filter-controls">
             <label>Filter by Level:</label>
-            <a href="/read?level=info&offset=0" class="filter-btn {{ if eq .Level "info" }}active{{ end }}">INFO</a>
-            <a href="/read?level=warn&offset=0" class="filter-btn {{ if eq .Level "warn" }}active{{ end }}">WARN</a>
-            <a href="/read?level=crit&offset=0" class="filter-btn {{ if eq .Level "crit" }}active{{ end }}">CRIT</a>
+            <a href="/read?level=info&service={{ .Service }}&offset=0" class="filter-btn {{ if eq .Level "info" }}active{{ end }}">INFO</a>
+            <a href="/read?level=warn&service={{ .Service }}&offset=0" class="filter-btn {{ if eq .Level "warn" }}active{{ end }}">WARN</a>
+            <a href="/read?level=crit&service={{ .Service }}&offset=0" class="filter-btn {{ if eq .Level "crit" }}active{{ end }}">CRIT</a>
         </div>
-        <div class="info">Showing {{ len .Entries }} events (limit: {{ .Limit }}, offset: {{ .Offset }}) | Current filter: <strong>{{ .Level }}</strong></div>
+        <div class="filter-controls">
+            <label>Filter by Service:</label>
+            <a href="/read?level={{ $.Level }}&service=&offset=0" class="filter-btn {{ if eq .Service "" }}active{{ end }}">All</a>
+            {{range .Services}}
+            <a href="/read?level={{ $.Level }}&service={{ . }}&offset=0" class="filter-btn {{ if eq $.Service . }}active{{ end }}">{{ . }}</a>
+            {{end}}
+        </div>
+        <div class="info">Showing {{ len .Entries }} events (limit: {{ .Limit }}, offset: {{ .Offset }})</div>
         
         <table id="eventsTable">
             <thead>
                 <tr>
-                    <th>ID ↕</th>
+                    <th>ID</th>
                     <th>Level</th>
-                    <th>Time ↕</th>
-                    <th>Service ↕</th>
+                    <th>Time</th>
+                    <th>Service</th>
                     <th>Message</th>
                 </tr>
             </thead>
@@ -39,12 +46,12 @@
         </table>
         
         <div class="pagination">
-            <a href="/read?level={{ .Level }}&offset=0">First</a>
-            {{if gt .Offset 0}}
-            <a href="/read?level={{ .Level }}&offset={{.PrevOffset}}">← Previous</a>
+            <a href="/read?level={{ .Level }}&service={{ .Service }}&offset=0">First</a>
+            {{if gt .Offset "0"}}
+            <a href="/read?level={{ .Level }}&service={{ .Service }}&offset={{.PrevOffset}}">← Previous</a>
             {{end}}
             <span>Page {{.Page}}</span>
-            <a href="/read?level={{ .Level }}&offset={{.NextOffset}}">Next →</a>
+            <a href="/read?level={{ .Level }}&service={{ .Service }}&offset={{.NextOffset}}">Next →</a>
         </div>
     </div>
 </body>

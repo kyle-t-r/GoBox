@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -218,9 +219,14 @@ func startServer() {
 	r := gin.Default()
 	r.Static("/static", "./static")
 	r.GET("/read", readEvents)
+	r.GET("/socket", handleWebSocket)
 
 	logger.Printf("[SERVER] Starting on %s\n", yamlConfig.Server.Port)
 	r.Run(yamlConfig.Server.Port)
+}
+
+func handleWebSocket(c *gin.Context) {
+	// TODO
 }
 
 type Event struct {
@@ -239,27 +245,28 @@ type PageData struct {
 	NextOffset int
 	PrevOffset int
 	Level      string
+	Service    string
+	Services   []string
 }
 
 func readEvents(c *gin.Context) {
 	limit := c.DefaultQuery("limit", "50")
 	offset := c.DefaultQuery("offset", "0")
 	level := c.DefaultQuery("level", "info")
+	service := c.DefaultQuery("service", "")
 
-	logger.Printf("[QUERY] Reading events - Limit: %s, Offset: %s, Level: %s\n", limit, offset, level)
+	logger.Printf("[QUERY] Reading events - Limit: %s, Offset: %s, Level: %s, Service: %s\n", limit, offset, level, service)
+	where, hasService := whereClause(level, service)
+	query := "SELECT id, level, time, service, message FROM events" + where + " ORDER BY time DESC LIMIT ? OFFSET ?"
+	logger.Printf("[QUERY] Executing query: %s\n", query)
 
-	var whereClause string
-	switch level {
-	case "crit":
-		whereClause = " WHERE level = 'CRIT'"
-	case "warn":
-		whereClause = " WHERE level IN ('WARN', 'CRIT')"
-	default:
-		whereClause = ""
+	var rows *sql.Rows
+	var err error
+	if hasService {
+		rows, err = db.Query(query, service, limit, offset)
+	} else {
+		rows, err = db.Query(query, limit, offset)
 	}
-
-	query := "SELECT id, level, time, service, message FROM events" + whereClause + " ORDER BY time DESC LIMIT ? OFFSET ?"
-	rows, err := db.Query(query, limit, offset)
 	if err != nil {
 		logger.Printf("[QUERY] ERROR: Database query failed: %v\n", err)
 		c.String(500, "Database error")
@@ -287,9 +294,10 @@ func readEvents(c *gin.Context) {
 		Page:       (offsetInt / limitInt) + 1,
 		NextOffset: offsetInt + limitInt,
 		PrevOffset: offsetInt - limitInt,
+		Level:      level,
+		Service:    service,
+		Services:   getAllServices(),
 	}
-
-	data.Level = level
 
 	tmpl := template.New("template.html").Funcs(map[string]any{
 		"formatTime": func(unixTime int) string {
@@ -305,5 +313,57 @@ func readEvents(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	tmpl.Execute(c.Writer, data)
+	if err := tmpl.Execute(c.Writer, data); err != nil {
+		logger.Printf("[TEMPLATE] ERROR: Failed to execute template: %v\n", err)
+		c.String(500, "Template error")
+		return
+	}
+}
+
+func whereClause(level string, service string) (string, bool) {
+	hasService := false
+	var clauses []string
+
+	if level != "" {
+		switch level {
+		case "crit":
+			clauses = append(clauses, "level = 'CRIT'")
+		case "warn":
+			clauses = append(clauses, "level IN ('WARN', 'CRIT')")
+		default:
+			clauses = append(clauses, "level IN ('INFO', 'WARN', 'CRIT')")
+		}
+	}
+
+	if service != "" {
+		hasService = true
+		clauses = append(clauses, "service = ?")
+	}
+
+	if len(clauses) == 0 {
+		return "", false
+	}
+
+	return " WHERE " + strings.Join(clauses, " AND "), hasService
+}
+
+func getAllServices() []string {
+	rows, err := db.Query("SELECT DISTINCT service FROM events")
+	if err != nil {
+		logger.Printf("[QUERY] ERROR: Failed to fetch services: %v\n", err)
+		return []string{}
+	}
+	defer rows.Close()
+
+	var services []string = []string{}
+	for rows.Next() {
+		var service string
+		if err := rows.Scan(&service); err != nil {
+			logger.Printf("[QUERY] ERROR: Failed to scan service: %v\n", err)
+			continue
+		}
+		services = append(services, service)
+	}
+
+	return services
 }
