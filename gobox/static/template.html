@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GoBox Events</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>GoBox Events Monitor</h1>
+        <div class="filter-controls">
+            <label>Filter by Level:</label>
+            <a href="/read?level=info&offset=0" class="filter-btn {{ if eq .Level "info" }}active{{ end }}">INFO</a>
+            <a href="/read?level=warn&offset=0" class="filter-btn {{ if eq .Level "warn" }}active{{ end }}">WARN</a>
+            <a href="/read?level=crit&offset=0" class="filter-btn {{ if eq .Level "crit" }}active{{ end }}">CRIT</a>
+        </div>
+        <div class="info">Showing {{ len .Entries }} events (limit: {{ .Limit }}, offset: {{ .Offset }}) | Current filter: <strong>{{ .Level }}</strong></div>
+        
+        <table id="eventsTable">
+            <thead>
+                <tr>
+                    <th>ID ↕</th>
+                    <th>Level</th>
+                    <th>Time ↕</th>
+                    <th>Service ↕</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Entries}}
+                <tr class="level-{{ .Level }}">
+                    <td>{{.Id}}</td>
+                    <td><span class="badge level-{{ .Level }}">{{.Level}}</span></td>
+                    <td>{{formatTime .Time}}</td>
+                    <td><strong>{{.Service}}</strong></td>
+                    <td>{{.Message}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        
+        <div class="pagination">
+            <a href="/read?level={{ .Level }}&offset=0">First</a>
+            {{if gt .Offset 0}}
+            <a href="/read?level={{ .Level }}&offset={{.PrevOffset}}">← Previous</a>
+            {{end}}
+            <span>Page {{.Page}}</span>
+            <a href="/read?level={{ .Level }}&offset={{.NextOffset}}">Next →</a>
+        </div>
+    </div>
+</body>
+</html>

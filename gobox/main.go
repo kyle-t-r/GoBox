@@ -236,15 +236,30 @@ type PageData struct {
 	Page       int
 	NextOffset int
 	PrevOffset int
+	Level      string
 }
 
 func readEvents(c *gin.Context) {
 	limit := c.DefaultQuery("limit", "50")
 	offset := c.DefaultQuery("offset", "0")
+	level := c.DefaultQuery("level", "info")
 
-	logger.Printf("[QUERY] Reading events - Limit: %s, Offset: %s\n", limit, offset)
+	logger.Printf("[QUERY] Reading events - Limit: %s, Offset: %s, Level: %s\n", limit, offset, level)
 
-	query := "SELECT id, level, time, service, message FROM events ORDER BY time DESC LIMIT ? OFFSET ?"
+	// Build WHERE clause based on level filter
+	var whereClause string
+	switch level {
+	case "crit":
+		whereClause = " WHERE level = 'CRIT'"
+	case "warn":
+		whereClause = " WHERE level IN ('WARN', 'CRIT')"
+	case "info":
+		whereClause = ""
+	default:
+		whereClause = ""
+	}
+
+	query := "SELECT id, level, time, service, message FROM events" + whereClause + " ORDER BY time DESC LIMIT ? OFFSET ?"
 	rows, err := db.Query(query, limit, offset)
 	if err != nil {
 		logger.Printf("[QUERY] ERROR: Database query failed: %v\n", err)
@@ -274,6 +289,9 @@ func readEvents(c *gin.Context) {
 		NextOffset: offsetInt + limitInt,
 		PrevOffset: offsetInt - limitInt,
 	}
+
+	// Pass level to template for filter UI
+	data.Level = level
 
 	tmpl := template.New("template.html").Funcs(map[string]interface{}{
 		"formatTime": func(unixTime int) string {
