@@ -64,7 +64,7 @@ func checkCPU(db *sql.DB, config SysMonitorConfig) {
 
 	switch currentState {
 	case "critical":
-		logger.Printf("[CPU] ALERT CRITICAL: Threshold exceeded! Usage: %.2f%%\n", cpuPercent[0])
+		logger.Printf("[CPU] CRITICAL: Threshold exceeded! Usage: %.2f%%\n", cpuPercent[0])
 		publib.InsertEvent(db, publib.Event{
 			Time:    publib.GetCurrentTime(),
 			Level:   "CRIT",
@@ -72,7 +72,7 @@ func checkCPU(db *sql.DB, config SysMonitorConfig) {
 			Message: fmt.Sprintf("CPU usage critical: %.2f%%", cpuPercent[0]),
 		})
 	case "warning":
-		logger.Printf("[CPU] ALERT WARNING: Usage above threshold: %.2f%%\n", cpuPercent[0])
+		logger.Printf("[CPU] WARNING: Usage above threshold: %.2f%%\n", cpuPercent[0])
 		publib.InsertEvent(db, publib.Event{
 			Time:    publib.GetCurrentTime(),
 			Level:   "WARN",
@@ -80,7 +80,7 @@ func checkCPU(db *sql.DB, config SysMonitorConfig) {
 			Message: fmt.Sprintf("CPU usage warning: %.2f%%", cpuPercent[0]),
 		})
 	default:
-		logger.Printf("[CPU] RECOVERED: Usage back to normal: %.2f%%\n", cpuPercent[0])
+		logger.Printf("[CPU] INFO: Usage: %.2f%%\n", cpuPercent[0])
 		publib.InsertEvent(db, publib.Event{
 			Time:    publib.GetCurrentTime(),
 			Level:   "INFO",
@@ -110,7 +110,7 @@ func checkMemory(db *sql.DB, config SysMonitorConfig) {
 
 	switch currentState {
 	case "critical":
-		logger.Printf("[MEMORY] ALERT CRITICAL: Threshold exceeded! Usage: %.2f%%\n", memStats.UsedPercent)
+		logger.Printf("[MEMORY] CRITICAL: Threshold exceeded! Usage: %.2f%%\n", memStats.UsedPercent)
 		publib.InsertEvent(db, publib.Event{
 			Time:    publib.GetCurrentTime(),
 			Level:   "CRIT",
@@ -118,7 +118,7 @@ func checkMemory(db *sql.DB, config SysMonitorConfig) {
 			Message: fmt.Sprintf("Memory usage critical: %.2f%%", memStats.UsedPercent),
 		})
 	case "warning":
-		logger.Printf("[MEMORY] ALERT WARNING: Usage above threshold: %.2f%%\n", memStats.UsedPercent)
+		logger.Printf("[MEMORY] WARNING: Usage above threshold: %.2f%%\n", memStats.UsedPercent)
 		publib.InsertEvent(db, publib.Event{
 			Time:    publib.GetCurrentTime(),
 			Level:   "WARN",
@@ -126,7 +126,7 @@ func checkMemory(db *sql.DB, config SysMonitorConfig) {
 			Message: fmt.Sprintf("Memory usage warning: %.2f%%", memStats.UsedPercent),
 		})
 	default:
-		logger.Printf("[MEMORY] RECOVERED: Usage back to normal: %.2f%%\n", memStats.UsedPercent)
+		logger.Printf("[MEMORY] INFO: Usage: %.2f%%\n", memStats.UsedPercent)
 		publib.InsertEvent(db, publib.Event{
 			Time:    publib.GetCurrentTime(),
 			Level:   "INFO",

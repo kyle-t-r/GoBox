@@ -34,7 +34,7 @@ func main() {
 	}
 	defer db.Close()
 
-	logger.Println("Checking disk \"%s\" usage...", config.DiskLabel)
+	logger.Printf("Checking disk \"%s\" usage...\n", config.DiskLabel)
 	checkDisk(db, config)
 
 	logger.Println("Checks complete")
@@ -61,7 +61,7 @@ func checkDisk(db *sql.DB, config DiskMonitorConfig) {
 
 	switch currentState {
 	case "critical":
-		logger.Printf("[DISK] ALERT CRITICAL: %s usage: %.2f%%\n", config.DiskLabel, diskUsage.UsedPercent)
+		logger.Printf("[DISK] CRITICAL: %s usage: %.2f%%\n", config.DiskLabel, diskUsage.UsedPercent)
 		publib.InsertEvent(db, publib.Event{
 			Time:    publib.GetCurrentTime(),
 			Level:   "CRIT",
@@ -69,7 +69,7 @@ func checkDisk(db *sql.DB, config DiskMonitorConfig) {
 			Message: fmt.Sprintf("Disk %s usage critical: %.2f%%", config.DiskLabel, diskUsage.UsedPercent),
 		})
 	case "warning":
-		logger.Printf("[DISK] ALERT WARNING: %s usage: %.2f%%\n", config.DiskLabel, diskUsage.UsedPercent)
+		logger.Printf("[DISK] WARNING: %s usage: %.2f%%\n", config.DiskLabel, diskUsage.UsedPercent)
 		publib.InsertEvent(db, publib.Event{
 			Time:    publib.GetCurrentTime(),
 			Level:   "WARN",
@@ -77,7 +77,7 @@ func checkDisk(db *sql.DB, config DiskMonitorConfig) {
 			Message: fmt.Sprintf("Disk %s usage warning: %.2f%%", config.DiskLabel, diskUsage.UsedPercent),
 		})
 	default:
-		logger.Printf("[DISK] Status normal: %s usage: %.2f%%\n", config.DiskLabel, diskUsage.UsedPercent)
+		logger.Printf("[DISK] INFO: %s usage: %.2f%%\n", config.DiskLabel, diskUsage.UsedPercent)
 		publib.InsertEvent(db, publib.Event{
 			Time:    publib.GetCurrentTime(),
 			Level:   "INFO",

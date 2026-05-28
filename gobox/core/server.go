@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kyle-t-r/gobox/publib"
 )
 
 /**
@@ -32,6 +33,9 @@ func (s *Server) Start() {
 	r.Static("/static", "./static")
 	r.GET("/read", func(c *gin.Context) {
 		readEvents(c, s.db)
+	})
+	r.POST("/new", func(c *gin.Context) {
+		newEvent(c, s.db)
 	})
 	r.GET("/socket", handleWebSocket)
 
@@ -180,4 +184,20 @@ func getAllServices(db *sql.DB) []string {
 	}
 
 	return services
+}
+
+func newEvent(c *gin.Context, db *sql.DB) {
+	var event publib.Event
+	if err := c.BindJSON(&event); err != nil {
+		logger.Printf("[SERVER] ERROR: Failed to bind JSON: %v\n", err)
+		c.String(400, "Invalid request")
+		return
+	}
+
+	if err := publib.InsertEvent(db, event); err != nil {
+		c.String(500, "Database error")
+		return
+	}
+
+	c.String(200, "Event created successfully")
 }
